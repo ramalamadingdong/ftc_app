@@ -15,6 +15,8 @@ public class Robot_3736 extends Robot_3736_Encoder
     @Override public void loop ()
     {
         Move (1.0f, 2500);
+        Turn (1.0f, 2500);
+
     }
 
 }

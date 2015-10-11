@@ -15,9 +15,9 @@ public class Robot_3736_Hardware extends OpMode
     private DcMotorController BackDriveCont;
 
     private DcMotor LB;
-    final int v_channel_left_drive = 1;
-
     private DcMotor RB;
+
+    final int v_channel_left_drive = 1;
     final int v_channel_right_drive = 2;
 
     // DcMotor Util1;                                                           // Game Element Motor
@@ -33,8 +33,8 @@ public class Robot_3736_Hardware extends OpMode
         BackDriveCont = hardwareMap.dcMotorController.get("BackDriveCont");
 
         LB = hardwareMap.dcMotor.get ("LB");
-
         RB = hardwareMap.dcMotor.get ("right_drive");
+
         RB.setDirection (DcMotor.Direction.REVERSE);
 
     /*    Util1 = hardwareMap.dcMotor.get ("Util1");
@@ -93,27 +93,16 @@ public class Robot_3736_Hardware extends OpMode
     public void run_using_encoders ()
 
     {
-        DcMotorController.RunMode l_mode
-                = BackDriveCont.getMotorChannelMode
-                ( v_channel_left_drive
-                );
+        DcMotorController.RunMode l_mode = BackDriveCont.getMotorChannelMode  ( v_channel_left_drive );
         if (l_mode == DcMotorController.RunMode.RESET_ENCODERS)
         {
-            BackDriveCont.setMotorChannelMode
-                    ( v_channel_left_drive
-                            , DcMotorController.RunMode.RUN_USING_ENCODERS
-                    );
+            BackDriveCont.setMotorChannelMode ( v_channel_left_drive, DcMotorController.RunMode.RUN_USING_ENCODERS);
         }
 
-        l_mode = BackDriveCont.getMotorChannelMode
-                ( v_channel_right_drive
-                );
+        l_mode = BackDriveCont.getMotorChannelMode ( v_channel_right_drive);
         if (l_mode == DcMotorController.RunMode.RESET_ENCODERS)
         {
-            BackDriveCont.setMotorChannelMode
-                    ( v_channel_right_drive
-                            , DcMotorController.RunMode.RUN_USING_ENCODERS
-                    );
+            BackDriveCont.setMotorChannelMode ( v_channel_right_drive, DcMotorController.RunMode.RUN_USING_ENCODERS);
         }
 
     }
