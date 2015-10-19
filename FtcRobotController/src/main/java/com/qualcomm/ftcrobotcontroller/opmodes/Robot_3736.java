@@ -3,8 +3,6 @@ package com.qualcomm.ftcrobotcontroller.opmodes;
 import android.app.Activity;
 import android.graphics.Color;
 import android.view.View;
-
-import com.qualcomm.ftccommon.DbgLog;
 import com.qualcomm.ftcrobotcontroller.R;
 import com.qualcomm.robotcore.hardware.DigitalChannelController;
 
@@ -49,7 +47,8 @@ public class Robot_3736 extends Robot_3736_Sensors {
         boolean bPrevState = false;
         boolean bCurrState = false;
 
-        while (opModeIsActive()) {
+        while (opModeIsActive())
+        {
             // turn on the LED.
             cdim.setDigitalChannelState(LED_CHANNEL, bEnabled);
 
@@ -63,7 +62,7 @@ public class Robot_3736 extends Robot_3736_Sensors {
             telemetry.addData("Blue ", sensorRGB.blue());
             telemetry.addData("Hue", hsvValues[0]);
 
-            waitOneFullHardwareCycle();                                                                                   // wait a hardware cycle before iterating.
+
 
             Move(1.0f, 2500);
             Turn(1.0f, 2500);
