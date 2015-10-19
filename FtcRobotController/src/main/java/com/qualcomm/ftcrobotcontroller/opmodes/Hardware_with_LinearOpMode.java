@@ -15,13 +15,22 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 
 
-public class Hardware_with_LinearOpMode extends LinearOpMode {
+public class Hardware_with_LinearOpMode extends LinearOpMode
+{
   private DcMotorController BackDriveCont;
 
   private DcMotor LB;
   private DcMotor RB;
 
-  final int v_channel_left_drive = 1;
+  DcMotor sweeper;
+  DcMotor lift;
+  DcMotor rightSide;
+  DcMotor leftSide;
+  Servo bucket;
+  Servo arm;
+
+
+  final int v_channel_left_drive  = 1;
   final int v_channel_right_drive = 2;
 
   // DcMotor Util1;                                                           // Game Element Motor
@@ -42,7 +51,8 @@ public class Hardware_with_LinearOpMode extends LinearOpMode {
     double l_power = Range.clip (p_power, -1, 1);
 
     double[] l_array =
-            { 0.00, 0.05, 0.09, 0.10, 0.12
+            {
+                      0.00, 0.05, 0.09, 0.10, 0.12
                     , 0.15, 0.18, 0.24, 0.30, 0.36
                     , 0.43, 0.50, 0.60, 0.72, 0.85
                     , 1.00, 1.00
@@ -111,7 +121,7 @@ public class Hardware_with_LinearOpMode extends LinearOpMode {
   boolean have_drive_encoders_reached ( double p_left_count , double p_right_count)
   {
 
-    boolean l_status = false;                                                     // Assume failure.
+    boolean l_status = false;                                                                      // Assume failure.
 
     //
     // Have the encoders reached the specified values?
