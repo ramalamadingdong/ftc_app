@@ -2,6 +2,7 @@ package com.qualcomm.ftcrobotcontroller.opmodes;
 
 /**
  * Created by Rami on 9/11/2015.
+ *
  */
 
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
@@ -26,7 +27,7 @@ public class Robot_3736_Hardware extends OpMode
 
     // Servo v_servo_right_hand;
 
-    public Robot_3736_Hardware() { }                                            // Intialization
+    public Robot_3736_Hardware() {}                                             // Initialization
 
     @Override public void init ()
     {
@@ -111,7 +112,7 @@ public class Robot_3736_Hardware extends OpMode
         LB.setPower (p_left_power);
         RB.setPower (p_right_power);
 
-    } // PushBotManual::set_drive_power
+    }
 
     public void reset_drive_encoders ()
 
@@ -127,7 +128,6 @@ public class Robot_3736_Hardware extends OpMode
     }
     boolean have_drive_encoders_reached ( double p_left_count , double p_right_count)
     {
-
         boolean l_status = false;                                                     // Assume failure.
 
         //

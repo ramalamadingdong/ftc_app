@@ -17,7 +17,8 @@ import java.util.Date;
  * Created by bk on 9/21/2015.
  */
 
-public class imuDemo extends OpMode {
+public class imuDemo extends OpMode
+{
     private DeviceInterfaceModule dim;
     private BoschGyro boschGyro;
 
@@ -26,8 +27,7 @@ public class imuDemo extends OpMode {
     private double delayStopTime;
     public MyContext mMyContext = new MyContext(null);
 
-    public imuDemo() {
-    }
+    public imuDemo() {}
 
     @Override
     public void init()
@@ -62,9 +62,7 @@ public class imuDemo extends OpMode {
     }
 
     @Override
-    public void stop() {
-
-    }
+    public void stop() {}
 
     /**
      * Nice little routine to record data to file that can be retrieved via the ADB.
@@ -73,11 +71,13 @@ public class imuDemo extends OpMode {
      * adb shell rm /mnt/shell/emulated/0/Android/data/com.qualcomm.ftcrobotcontroller/files/TraceFile.txt
      * Need to add something in init to delete the file.
      */
-    public void showDiagnostics() {
+    public void showDiagnostics()
+    {
         String L1 = "L: ";
         String L2 = "R: ";
         String L3 = "T: " + runTime.toString();
-        try {
+        try
+        {
             // Creates a trace file in the primary external storage space of the
             // current application.
             // If the file does not exists, it is created.
@@ -88,7 +88,7 @@ public class imuDemo extends OpMode {
             BufferedWriter writer = new BufferedWriter(new FileWriter(traceFile, true /*append*/));
             writer.write(L1 + "\n" + L2 + "\n" + L3 + "\n\n");
             writer.close();
-        } catch (IOException e) {
         }
+        catch (IOException e) {}
     }
 }
