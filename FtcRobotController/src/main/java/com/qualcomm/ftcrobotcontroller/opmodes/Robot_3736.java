@@ -17,8 +17,6 @@ public class Robot_3736 extends Robot_3736_Sensors {
         super.start();
         reset_drive_encoders();
 
-        // write some device information (connection info, name and type)
-        // to the log file.
         hardwareMap.logDevices();
 
         cdim = hardwareMap.deviceInterfaceModule.get("dim");                                                    // get a reference to our DeviceInterfaceModule object.
@@ -35,7 +33,7 @@ public class Robot_3736 extends Robot_3736_Sensors {
 
         waitForStart();                                                                                         // wait for the start button to be pressed.
 
-        float hsvValues[] = {0F, 0F, 0F};                                                                         // hsvValues is an array that will hold the hue, saturation, and value information.
+        float hsvValues[] = {0F, 0F, 0F};                                                                       // hsvValues is an array that will hold the hue, saturation, and value information.
 
         final float values[] = hsvValues;                                                                       // values is a reference to the hsvValues array.
 
@@ -61,8 +59,6 @@ public class Robot_3736 extends Robot_3736_Sensors {
             telemetry.addData("Green", sensorRGB.green());
             telemetry.addData("Blue ", sensorRGB.blue());
             telemetry.addData("Hue", hsvValues[0]);
-
-
 
             Move(1.0f, 2500);
             Turn(1.0f, 2500);

@@ -32,9 +32,7 @@ public class Hardware_with_LinearOpMode extends LinearOpMode {
 
 
   @Override
-  public void runOpMode() throws InterruptedException {
-
-  }
+  public void runOpMode() throws InterruptedException { }
 
 
   double scale_motor_power (double p_power)
@@ -51,9 +49,9 @@ public class Hardware_with_LinearOpMode extends LinearOpMode {
             };
     int l_index = (int) (l_power * 16.0);
     if (l_index < 0)
-    {
+        {
       l_index = -l_index;
-    }
+        }
     else if (l_index > 16)
     {
       l_index = 16;
@@ -96,7 +94,7 @@ public class Hardware_with_LinearOpMode extends LinearOpMode {
     LB.setPower (p_left_power);
     RB.setPower (p_right_power);
 
-  } // PushBotManual::set_drive_power
+  }
 
   public void reset_drive_encoders ()
 
