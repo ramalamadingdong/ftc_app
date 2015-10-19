@@ -16,6 +16,7 @@ import java.util.Date;
 /**
  * Created by bk on 9/21/2015.
  */
+
 public class imuDemo extends OpMode {
     private DeviceInterfaceModule dim;
     private BoschGyro boschGyro;
@@ -29,18 +30,19 @@ public class imuDemo extends OpMode {
     }
 
     @Override
-    public void init() {
+    public void init()
+    {
         startDate = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss").format(new Date());
 
         // The strings must match names given in Settings->Configure Robot
-        dim = hardwareMap.deviceInterfaceModule.get("Device Interface Module 1");
+        dim = hardwareMap.deviceInterfaceModule.get("dim");
         boschGyro = new BoschGyro(dim,0);
         runTime.reset();
     }
 
     @Override
-    public void init_loop() {
-
+    public void init_loop()
+    {
         if (!boschGyro.initComplete())
         {
             boschGyro.updateState();
@@ -52,11 +54,10 @@ public class imuDemo extends OpMode {
         }
     }
 
-    // This is generally the "forever" loop in RobotC. But don't do a forever loop
-    // The FTC App will constantly call this loop code.
     @Override
-    public void loop() {
-        // Feature to "record" what you want while runnin
+    public void loop()
+    {
+        // Feature to "record" what you want while running
         showDiagnostics();
     }
 
