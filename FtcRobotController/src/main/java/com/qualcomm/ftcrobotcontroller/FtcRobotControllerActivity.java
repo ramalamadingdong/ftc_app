@@ -39,6 +39,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.hardware.Camera;
 import android.hardware.usb.UsbManager;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -48,11 +49,11 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import com.qualcomm.ftccommon.DbgLog;
 import com.qualcomm.ftccommon.FtcEventLoop;
 import com.qualcomm.ftccommon.FtcRobotControllerService;
@@ -67,6 +68,7 @@ import com.qualcomm.robotcore.util.Dimmer;
 import com.qualcomm.robotcore.util.ImmersiveMode;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.wifi.WifiDirectAssistant;
+
 
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -103,6 +105,10 @@ public class FtcRobotControllerActivity extends Activity {
 
   protected FtcEventLoop eventLoop;
 
+  // Added code
+  protected MyContext      myContext;
+
+
   protected class RobotRestarter implements Restarter {
 
     public void requestRestart() {
@@ -132,6 +138,7 @@ public class FtcRobotControllerActivity extends Activity {
       DbgLog.msg("USB Device attached; app restart may be needed");
     }
   }
+
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -174,6 +181,11 @@ public class FtcRobotControllerActivity extends Activity {
     hittingMenuButtonBrightensScreen();
 
     if (USE_DEVICE_EMULATION) { HardwareFactory.enableDeviceEmulation(); }
+
+    // Added code
+    // save the context for other classes to use.
+    myContext = new MyContext(this);
+
   }
 
   @Override
@@ -297,6 +309,7 @@ public class FtcRobotControllerActivity extends Activity {
           utility.updateHeader(Utility.NO_FILE, R.string.pref_hardware_config_filename, R.id.active_filename, R.id.included_header);
         }
       }
+
     }
   }
 
@@ -320,9 +333,9 @@ public class FtcRobotControllerActivity extends Activity {
     HardwareFactory factory;
 
     // Modern Robotics Factory for use with Modern Robotics hardware
-    HardwareFactory modernRoboticsFactory = new HardwareFactory(context);
-    modernRoboticsFactory.setXmlInputStream(fis);
-    factory = modernRoboticsFactory;
+      HardwareFactory modernRoboticsFactory = new HardwareFactory(context);
+      modernRoboticsFactory.setXmlInputStream(fis);
+      factory = modernRoboticsFactory;
 
     eventLoop = new FtcEventLoop(factory, new FtcOpModeRegister(), callback, this);
 
@@ -381,4 +394,25 @@ public class FtcRobotControllerActivity extends Activity {
       }
     });
   }
+
+  public void initPreview(final Camera camera, final MyContext context, final Camera.PreviewCallback previewCallback) {
+    runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+//        context.preview = new CameraPreview(FtcRobotControllerActivity.this, camera, previewCallback);
+//        FrameLayout previewLayout = (FrameLayout) findViewById(R.id.previewLayout);
+//        previewLayout.addView(context.preview);
+      }
+    });
+  }
+
+ /* public void removePreview(final MyContext context) {
+    runOnUiThread(new Runnable() {
+      @Override
+      public void run() {
+        FrameLayout previewLayout = (FrameLayout) findViewById(R.id.previewLayout);
+        previewLayout.removeAllViews();
+      }
+    });
+  }*/
 }
