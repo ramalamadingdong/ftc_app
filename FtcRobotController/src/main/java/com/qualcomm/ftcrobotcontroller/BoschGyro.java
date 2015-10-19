@@ -277,9 +277,9 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
     private final int port;
     private final byte[] readCache;
     private final Lock readCacheLock;
-    private final byte[] writeCache; //This cache will hold the bytes which are to be written to the interface
-    private final Lock writeCacheLock; //A lock on access to the IMU's I2C write cache
-    private SENSOR_MODE sensorMode;//The operational mode to which the IMU will be set after its initial reset.
+    private final byte[] writeCache;                                                                           //This cache will hold the bytes which are to be written to the interface
+    private final Lock writeCacheLock;                                                                         //A lock on access to the IMU's I2C write cache
+    private SENSOR_MODE sensorMode;                                                                            //The operational mode to which the IMU will be set after its initial reset.
     private States imuState;
     private States nextImuState;
     private boolean initComplete;
