@@ -5,18 +5,16 @@ package com.qualcomm.ftcrobotcontroller.opmodes;
  */
 public class Robot_3736 extends Robot_3736_Encoder
 {
-   public Robot_3736 (){ }                                         // Initialise Base Classes
-
-    @Override public void start ()
-    {
+    @Override
+    public void runOpMode() throws InterruptedException {
         super.start ();
         reset_drive_encoders ();
-    }
-    @Override public void loop ()
+    waitForStart();
+
+    while (opModeIsActive())
     {
         Move (1.0f, 2500);
         Turn (1.0f, 2500);
-
     }
-
+}
 }

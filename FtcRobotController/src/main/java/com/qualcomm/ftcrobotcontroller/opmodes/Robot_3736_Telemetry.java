@@ -4,7 +4,7 @@ package com.qualcomm.ftcrobotcontroller.opmodes;
 /**
  * Created by Rami on 9/11/2015.
  */
-public class Robot_3736_Telemetry extends Robot_3736_Hardware
+public class Robot_3736_Telemetry extends Hardware_with_LinearOpMode
 {
     public void update_telemetry ()                                                             // Send telemetry data to the driver station.
     {
@@ -32,10 +32,5 @@ public class Robot_3736_Telemetry extends Robot_3736_Hardware
                 );
                 */
     }
-
-
-
-
-
 
 }
