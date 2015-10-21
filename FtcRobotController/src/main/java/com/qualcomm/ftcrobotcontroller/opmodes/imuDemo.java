@@ -43,6 +43,7 @@ public class imuDemo extends OpMode
     @Override
     public void init_loop()
     {
+
         if (!boschGyro.initComplete())
         {
             boschGyro.updateState();
@@ -57,6 +58,15 @@ public class imuDemo extends OpMode
     @Override
     public void loop()
     {
+        if (!boschGyro.initComplete())
+        {
+            boschGyro.updateState();
+            telemetry.addData("1. State",boschGyro.currentState());
+        }
+        else
+        {
+            telemetry.addData("2. Heading",boschGyro.heading());
+        }
         // Feature to "record" what you want while running
         showDiagnostics();
     }

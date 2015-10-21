@@ -99,8 +99,10 @@
     <orderEntry type="library" exported="" name="Analytics-release-" level="project" />
     <orderEntry type="library" exported="" name="FtcCommon-release-" level="project" />
     <orderEntry type="library" exported="" name="WirelessP2p-release-" level="project" />
+    <orderEntry type="library" exported="" name="org.apache.commons.io-2.4" level="project" />
     <orderEntry type="library" exported="" name="Hardware-release-" level="project" />
     <orderEntry type="library" exported="" name="RobotCore-release-" level="project" />
+    <orderEntry type="library" exported="" name="commons-io-2.4" level="project" />
     <orderEntry type="library" exported="" name="effects-Google Inc.:Google APIs:19" level="project" />
     <orderEntry type="library" exported="" name="usb-Google Inc.:Google APIs:19" level="project" />
     <orderEntry type="library" exported="" name="maps-Google Inc.:Google APIs:19" level="project" />
