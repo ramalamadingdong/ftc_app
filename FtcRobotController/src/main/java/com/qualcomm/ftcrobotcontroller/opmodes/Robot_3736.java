@@ -44,8 +44,9 @@ public class Robot_3736 extends Robot_3736_Sensors {
 
         while (opModeIsActive())
         {
-            // turn on the LED.
-            cdim.setDigitalChannelState(LED_CHANNEL, bEnabled);
+            intia();
+
+            cdim.setDigitalChannelState(LED_CHANNEL, bEnabled);                                     // turn on the LED.
 
             // convert the RGB values to HSV values.
             Color.RGBToHSV((sensorRGB.red() * 255) / 800, (sensorRGB.green() * 255) / 800, (sensorRGB.blue() * 255) / 800, hsvValues);

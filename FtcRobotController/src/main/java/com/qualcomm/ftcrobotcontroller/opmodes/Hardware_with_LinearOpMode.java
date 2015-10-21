@@ -26,9 +26,9 @@ public class Hardware_with_LinearOpMode extends LinearOpMode
   DcMotor lift;
   DcMotor rightSide;
   DcMotor leftSide;
+
   Servo bucket;
   Servo arm;
-
 
   final int v_channel_left_drive  = 1;
   final int v_channel_right_drive = 2;
@@ -41,7 +41,27 @@ public class Hardware_with_LinearOpMode extends LinearOpMode
 
 
   @Override
-  public void runOpMode() throws InterruptedException { }
+  public void runOpMode() throws InterruptedException {}
+
+    void intia ()
+    {
+        sweeper = hardwareMap.dcMotor.get("MS");
+        lift = hardwareMap.dcMotor.get("MLift");
+        rightSide = hardwareMap.dcMotor.get("MR");
+        leftSide = hardwareMap.dcMotor.get("ML");
+        leftSide.setDirection(DcMotor.Direction.REVERSE);
+
+        arm = hardwareMap.servo.get("servo_1");
+        bucket = hardwareMap.servo.get("servo_6");
+
+        BackDriveCont = hardwareMap.dcMotorController.get("BackDriveCont");
+
+        LB = hardwareMap.dcMotor.get ("encLeft");
+        RB = hardwareMap.dcMotor.get ("encRight");
+        RB.setDirection (DcMotor.Direction.REVERSE);
+
+
+    }
 
 
   double scale_motor_power (double p_power)
@@ -79,9 +99,9 @@ public class Hardware_with_LinearOpMode extends LinearOpMode
     return l_scale;
   }
 
-  double a_left_drive_power () {return LB.getPower ();}
+  double a_left_drive_power () {return leftSide.getPower ();}
 
-  double a_right_drive_power (){return RB.getPower ();}
+  double a_right_drive_power (){return rightSide.getPower();}
 
   public void run_using_encoders ()
 
@@ -101,9 +121,8 @@ public class Hardware_with_LinearOpMode extends LinearOpMode
   }
   void set_drive_power (double p_left_power, double p_right_power)
   {
-    LB.setPower (p_left_power);
-    RB.setPower (p_right_power);
-
+      leftSide.setPower (p_left_power);
+      rightSide.setPower (p_right_power);
   }
 
   public void reset_drive_encoders ()
@@ -115,12 +134,9 @@ public class Hardware_with_LinearOpMode extends LinearOpMode
   }
 
   int a_left_encoder_count (){return LB.getCurrentPosition ();}
-  int a_right_encoder_count (){return RB.getCurrentPosition ();
-
-  }
+  int a_right_encoder_count(){return RB.getCurrentPosition ();}
   boolean have_drive_encoders_reached ( double p_left_count , double p_right_count)
   {
-
     boolean l_status = false;                                                                      // Assume failure.
 
     //

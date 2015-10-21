@@ -48,8 +48,8 @@ public class Robot_3736_Hardware extends OpMode
 
         BackDriveCont = hardwareMap.dcMotorController.get("BackDriveCont");
 
-        LB = hardwareMap.dcMotor.get ("LB");
-        RB = hardwareMap.dcMotor.get ("right_drive");
+        LB = hardwareMap.dcMotor.get ("encRight");
+        RB = hardwareMap.dcMotor.get ("RB");
 
         RB.setDirection (DcMotor.Direction.REVERSE);
 
@@ -122,8 +122,8 @@ public class Robot_3736_Hardware extends OpMode
     }
     void set_drive_power (double p_left_power, double p_right_power)
     {
-        LB.setPower (p_left_power);
-        RB.setPower (p_right_power);
+        leftSide.setPower (p_left_power);
+        rightSide.setPower (p_right_power);
     }
 
     public void reset_drive_encoders ()
