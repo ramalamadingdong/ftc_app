@@ -37,10 +37,7 @@ public class Robot_3736 extends Robot_3736_Sensors {
 
         final float values[] = hsvValues;                                                                       // values is a reference to the hsvValues array.
 
-        // get a reference to the RelativeLayout so we can change the background
-        // color of the Robot Controller app to match the hue detected by the RGB sensor.
         final View relativeLayout = ((Activity) hardwareMap.appContext).findViewById(R.id.RelativeLayout);
-
 
         while (opModeIsActive())
         {
