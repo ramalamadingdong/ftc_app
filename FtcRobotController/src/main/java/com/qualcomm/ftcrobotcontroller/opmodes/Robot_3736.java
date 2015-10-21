@@ -58,8 +58,8 @@ public class Robot_3736 extends Robot_3736_Sensors {
             telemetry.addData("Blue ", sensorRGB.blue());
             telemetry.addData("Hue", hsvValues[0]);
 
-            Move(1.0f, 2500);
-            Turn(1.0f, 2500);
+            Move(1.0f, 250);
+            Turn(1.0f, 250);
         }
     }
 }
