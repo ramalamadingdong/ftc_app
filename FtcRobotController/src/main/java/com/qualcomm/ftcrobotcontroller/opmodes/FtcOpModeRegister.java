@@ -61,7 +61,7 @@ public class FtcOpModeRegister implements OpModeRegister {
     manager.register("NullOp", NullOp.class);
     // manager.register("AluminatiAuto",AluminatiAuto.class);
     // manager.register("AluminatiTeleOp",AluminatiTeleop.class);
-    manager.register("AluminatiImu", imuDemo.class);
+    manager.register("imuDemo", imuDemo.class);
     // manager.register("IMUTest",IMUtest.class);
   }
 }
