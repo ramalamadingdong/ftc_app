@@ -17,12 +17,9 @@ public class TeleOp extends OpMode {
 
 	double armPosition;
 
-
 	double armDelta = 0.1;
 
-
 	double bucketPosition;
-// Rami needs to learn how to share
 
 	double bucketDelta = 0.1;
 
