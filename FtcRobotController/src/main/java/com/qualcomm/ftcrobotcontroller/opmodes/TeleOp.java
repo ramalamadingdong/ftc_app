@@ -55,8 +55,8 @@ public class TeleOp extends OpMode {
 	}
 
 	@Override
-	public void loop() {
-
+	public void loop()
+	{
 		float y1 = gamepad1.left_stick_y;
 		float y2 = gamepad1.right_stick_y;
 		float y3 = gamepad2.left_stick_y;
@@ -67,31 +67,35 @@ public class TeleOp extends OpMode {
 		y3 = Range.clip(y3, -1, 1);
 		y4 = Range.clip(y4, -1, 1);
 
-
 		y1 = (float)scaleInput(y1);
-		y2 =  (float)scaleInput(y2);
+		y2 = (float)scaleInput(y2);
 		y3 = (float)scaleInput(y3);
+        y4 = (float)scaleInput(y4);
 
 		// write the values to the motors
 		sweeper.setPower(y3);
 		lift.setPower(y4);
 
-		if (gamepad2.a) {
+        leftSide.setPower(y2);
+        rightSide.setPower(y1);
 
+        if (gamepad2.a)
+        {
 			armPosition += armDelta;
 		}
 
-		if (gamepad2.y) {
-
+		if (gamepad2.y)
+        {
 			armPosition -= armDelta;
 		}
 
-
-		if (gamepad2.x) {
+		if (gamepad2.x)
+        {
 			bucketPosition += bucketDelta;
 		}
 
-		if (gamepad2.b) {
+		if (gamepad2.b)
+        {
 			bucketPosition -= bucketDelta;
 		}
 
@@ -102,9 +106,6 @@ public class TeleOp extends OpMode {
 
 		arm.setPosition(armPosition);
 		bucket.setPosition(bucketPosition);
-
-
-
 
         telemetry.addData("Text", "*** Robot Data***");
         telemetry.addData("arm", "arm:  " + String.format("%.2f", armPosition));
@@ -145,5 +146,4 @@ public class TeleOp extends OpMode {
 		// return scaled value.
 		return dScale;
 	}
-
 }
