@@ -3,8 +3,11 @@ package com.qualcomm.ftcrobotcontroller;
 import android.util.Log;
 
 import com.qualcomm.robotcore.hardware.DeviceInterfaceModule;
+import com.qualcomm.robotcore.hardware.HardwareDevice;
+import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.I2cController;
 import com.qualcomm.robotcore.hardware.I2cDevice;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 import java.util.concurrent.locks.Lock;
 
@@ -18,7 +21,7 @@ import java.util.concurrent.locks.Lock;
  *    void close();
  */
 
-public class BoschGyro implements I2cController.I2cPortReadyCallback {
+public class BoschGyro implements HardwareDevice,I2cController.I2cPortReadyCallback {
 
     final static byte bCHIP_ID_VALUE = (byte) 0xa0;
 
@@ -254,36 +257,38 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
         IMU_RESET,
         IMU_RESET_VERIFY,
         IMU_RESET_VERIFY2,
+        IMU_WAIT_FOR_SELF_TEST,
         IMU_SET_POWER_MODE,
         IMU_SET_PAGE_ID,
         IMU_SET_UNITS,
-        IMU_SET_CRYSTAL,
-        IMU_RUN_SELF_TEST1,
-        IMU_RUN_SELF_TEST2,
-        IMU_RUN_SELF_TEST3,
-        IMU_RUN_SELF_TEST4,
-        IMU_CALIBRATE_INIT,
-        IMU_CALIBRATE,
-        IMU_CALIBRATE_DONE,
-        IMU_SET_IMU_MODE,
+        IMU_MODE_TRANSITION,
+        IMU_MODE_VERIFY,
+        IMU_MODE_VERIFY2,
+        IMU_VERIFY_CALIBRATION,
+        IMU_READ_STATUS,
+        IMU_READ_STATUS2,
         IMU_RUNNING,
+        IMU_DELAY
     }
 
     private final I2cDevice imu;
+    private ElapsedTime runtime;
+
     public volatile int I2C_ADDRESS = 0x28 * 2;
     public volatile boolean localReady = true;
+    private final byte dataRegValue = (byte)0xFF;
     private final int i2cBufferSize = 26; //Size of any extra buffers that will hold any incoming or outgoing cache data
-    private final DeviceInterfaceModule dim;
-    private final int port;
     private final byte[] readCache;
     private final Lock readCacheLock;
-    private final byte[] writeCache;                                                                           //This cache will hold the bytes which are to be written to the interface
-    private final Lock writeCacheLock;                                                                         //A lock on access to the IMU's I2C write cache
-    private SENSOR_MODE sensorMode;                                                                            //The operational mode to which the IMU will be set after its initial reset.
+    private final byte[] writeCache; //This cache will hold the bytes which are to be written to the interface
+    private final Lock writeCacheLock; //A lock on access to the IMU's I2C write cache
     private States imuState;
     private States nextImuState;
+    private States nextImuStateStatus;
     private boolean initComplete;
     private byte[] outboundBytes;
+    private double delayTime;
+    private double relativeHeading;
 
     /** whether to use the external or internal 32.768khz crystal. External crystal
      * use is recommended by the BNO055 specification. */
@@ -298,18 +303,8 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
     /** directional convention for measureing pitch angles. See Section 3.6.1 (p31) of the BNO055 specification */
     private PITCHMODE        pitchmode           = PITCHMODE.ANDROID;    // Section 3.6.2
 
-    /** calibration data with which the BNO055 should be initialized */
-    public byte[]           calibrationData     = null;
-
-    private int numberOfRegisters = 20;
-    private int readCacheOffset = REGISTER.EULER_H_MSB.bVal - I2cController.I2C_BUFFER_START_ADDRESS;
-
-    public BoschGyro(DeviceInterfaceModule module, int physicalPort) {
-        imu = new I2cDevice(module, physicalPort); //Identify the IMU with the port to
-        //which it is connected on the Modern Robotics Core Device Interface Module
-
-        this.dim = module;
-        this.port = physicalPort;
+    public BoschGyro(HardwareMap currentHWmap,String configuredIMUname) {
+        imu = currentHWmap.i2cDevice.get(configuredIMUname);
 
         this.outboundBytes = new byte[i2cBufferSize];
 
@@ -317,42 +312,318 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
         this.readCacheLock = this.imu.getI2cReadCacheLock();
         this.writeCache = this.imu.getI2cWriteCache();
         this.writeCacheLock = this.imu.getI2cWriteCacheLock();
-        this.sensorMode = SENSOR_MODE.IMU;
 
-        this.dim.enableI2cReadMode(physicalPort, this.I2C_ADDRESS, 4, numberOfRegisters);
-        this.dim.setI2cPortActionFlag(physicalPort);
-        this.dim.writeI2cCacheToController(physicalPort);
-        this.dim.registerForI2cPortReadyCallback(this, physicalPort);
+        this.imu.registerForI2cPortReadyCallback(this);
 
         this.imuState = States.IMU_INIT;
         this.nextImuState = States.IMU_INIT;
+        this.nextImuStateStatus = States.IMU_INIT;
         this.initComplete = false;
+        delayTime = 0;
+        runtime = new ElapsedTime();
+        relativeHeading = 0.0;
     }
 
+    /**
+     * This class is called during the "init_loop" of the Op Mode
+     * It takes a couple seconds for the IMU to initiailize and calibrate
+     * The initComplete is set true when calibration is done and the
+     * IMU is ready for use
+     * @return true is ready for use
+     */
     public boolean initComplete() {
         return this.initComplete;
     }
 
-    public double heading()
+    /**
+     * Utility function to "dump" memory to the logcat
+     * @param n - array of bytes to display the hex values
+     * @return String that can be output to the log
+     */
+    public static String hex(byte n[]) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : n) {
+            sb.append(String.format("%02X ", b));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * The IMU constantly runs in the background. The QualComm software continuously polls
+     * all the sensors and stores the data in the cache. This function just reads what is
+     * in the cache and returns the heading
+     * @return heading in degrees range from 0 to 360
+     */
+    public double getHeading()
     {
-        int headingInt;
+        short headingInt;
         double h;
 
         this.readCacheLock.lock();
 
-        headingInt = this.readCache[I2cController.I2C_BUFFER_START_ADDRESS]  +
-                this.readCache[I2cController.I2C_BUFFER_START_ADDRESS+1] * 256;
+        headingInt = (short)(this.readCache[I2cController.I2C_BUFFER_START_ADDRESS]  +
+                this.readCache[I2cController.I2C_BUFFER_START_ADDRESS+1] * 256);
 
         h = ((float)headingInt) * 1.0/16.0;
 
         this.readCacheLock.unlock();
+
+        if (h < 0.0) {
+            h = h + 360.0;
+        }
         return h;
     }
 
+    /**
+     * This sets the "relative heading". Calling this routine will set the relative heading
+     * to the current heading. the getRelativeHeading will return the number of degrees relative
+     * to the starting point. Basically this sets what "0" is. Call this routine just before you
+     * move and then you use to getRelativeHeading to see how many degrees you have turned from
+     * the current position.
+     */
+    public void setZeroHeading()
+    {
+        relativeHeading = getHeading();
+    }
+
+    /**
+     * Get what the zero heading is set to
+     * @return
+     */
+    public double getZeroHeading()
+    {
+        return relativeHeading;
+    }
+    /**
+     * getRelativeHeading computes the angle relative to when the setZeroHeading is called.
+     * @return relative heading -180 to 180
+     */
+    public double getRelativeHeading() {
+        double h;
+
+        h = getHeading() - relativeHeading;
+        if (h < -180.0) {
+            h = h + 360;
+        }
+        else if (h > 180.0)
+        {
+            h = h -360;
+        }
+        return h;
+    }
+    /**
+     * The following status information is only valid after the unit has been commanded to
+     * read the status data from the BNO. Don't assume it is always valid unless the last
+     * command issued was to read the status
+     */
+
+    /**
+     * Calibration is a challenge for the Magnetometer and Accelerometer. The robot could be
+     * pre-calibrated and stored in a file on the phone. This class currently does read or
+     * write the calibration data to the phone.
+     */
+
+    /**
+     * Helper function to return whether the Magnetometer is calibrated
+     * In order to calibrate the Magnetometer, the robot would have to move around
+     * or you would have to take the sensor off the robot and move it around. The
+     * recommendation is to move it in a figure 8 type pattern. This will be very
+     * difficult to do when setting up for a match.
+     * @return 3 is calibrated, 0 is not calibrated, in between is in progress
+     */
+    private byte magCalStatus()
+    {
+        byte calStatus;
+        int index;
+
+        index = I2cController.I2C_BUFFER_START_ADDRESS;
+        this.readCacheLock.lock();
+        calStatus = (byte)(this.readCache[index] & 0x03);
+        this.readCacheLock.unlock();
+        return calStatus;
+    }
+
+    /**
+     * Helper function to return whether the Accelerometer is calibrated
+     * In order to calibrate the Accelerometer, the robot needs to be placed in 6 different
+     * stable positions for just a couple seconds each. Ideally, 3 of positions are 3 sides
+     * of the robot representing an X, Y, and Z axis. This might be a little awkward before a match.
+     * @return 3 is calibrated, 0 is not calibrated, in between is in progress
+     */
+    private byte accCalStatus()
+    {
+        byte calStatus;
+        int index;
+
+        index = I2cController.I2C_BUFFER_START_ADDRESS;
+        this.readCacheLock.lock();
+        calStatus = (byte)(this.readCache[index] & 0x0C >> 2);
+        this.readCacheLock.unlock();
+        return calStatus;
+    }
+
+    /**
+     * The Gyro is the easiest to calibrate. It just needs to be in a single stable position for a
+     * couple of seconds.
+     * @return 3 is calibrated, 0 is not calibrated, in between is in progress
+     */
+    private byte gyroCalStatus()
+    {
+        byte calStatus;
+        int index;
+
+        index = I2cController.I2C_BUFFER_START_ADDRESS;
+        this.readCacheLock.lock();
+        calStatus = (byte)(this.readCache[index] & 0x30);
+        calStatus = (byte)(calStatus >> 4);
+        this.readCacheLock.unlock();
+        return calStatus;
+    }
+
+    /**
+     * The System Calibration depends on all three sensors.
+     * @return 3 is calibrated, 0 is not calibrated, in between is in progress
+     */
+    private byte sysCalStatus()
+    {
+        byte calStatus;
+        int index;
+
+        index = I2cController.I2C_BUFFER_START_ADDRESS;
+        this.readCacheLock.lock();
+        calStatus = (byte)(this.readCache[index] & 0xC0 >> 6);
+        this.readCacheLock.unlock();
+        return calStatus;
+    }
+
+    /**
+     * Returns the system test status. System test is complete when equal to 0x0F
+     * Bit 0 - Accelerometer
+     * Bit 1 - Magnetometer
+     * Bit 2 - Gyro
+     * Bit 3 - Microcontroller
+     * @return system test status
+     */
+    private byte sysTestStatus()
+    {
+        byte status;
+        int index;
+
+        index = I2cController.I2C_BUFFER_START_ADDRESS+REGISTER.SELFTEST_RESULT.bVal-REGISTER.CALIB_STAT.bVal;
+        this.readCacheLock.lock();
+        status = (byte)(this.readCache[index] & 0x0F);
+        this.readCacheLock.unlock();
+        return status;
+    }
+
+    /**
+     * Currently not used but it is the System Status
+     * 0 - Idle
+     * 1 - System Error
+     * 2 - Initializing Peripherals
+     * 3 - System Initialization
+     * 4 - Executing Self Test
+     * 5 - Sensor Fusion, algorithm running
+     * 6 - System running without fusion algorithm
+     * @return system status
+     */
+    private byte systemStatus()
+    {
+        byte status;
+        int index;
+
+        index = I2cController.I2C_BUFFER_START_ADDRESS+REGISTER.SYS_STAT.bVal-REGISTER.CALIB_STAT.bVal;
+        this.readCacheLock.lock();
+        status = this.readCache[index];
+        this.readCacheLock.unlock();
+        return status;
+    }
+
+    /**
+     * Currently not used. Reports the System Error register
+     * 0 - No Error
+     * 1 - Peripheral Initialization Error
+     * 2 - System Initialization Error
+     * 3 - Self Test result failed
+     * 4 - Register map value out of range
+     * 5 - Register map address out of range
+     * 6 - Register map write error
+     * 7 - BNO low power mode not available for selected operational mode
+     * 8 - Accelerometer power mode not available
+     * 9 - Fusion algorithm configuration error
+     * A - Sensor configuration error
+     * @return system error
+     */
+    private byte systemError()
+    {
+        byte status;
+        int index;
+
+        index = I2cController.I2C_BUFFER_START_ADDRESS+REGISTER.SYS_ERR.bVal-REGISTER.CALIB_STAT.bVal;
+        this.readCacheLock.lock();
+        status = this.readCache[index];
+        this.readCacheLock.unlock();
+        return status;
+    }
+
+    /**
+     * The data register is a reserved register and is always 0xFF. This can always be used to
+     * see if the read cache has been updated when reading the status registers
+     * @return
+     */
+    private byte dataRegister()
+    {
+        byte status;
+        int index;
+
+        index = I2cController.I2C_BUFFER_START_ADDRESS+REGISTER.DATA_SELECT.bVal-REGISTER.CALIB_STAT.bVal;
+        this.readCacheLock.lock();
+        status = this.readCache[index];
+        this.readCacheLock.unlock();
+        return status;
+    }
+
+    /**
+     * Returns the current operating mode of the BNO
+     * 0 - Config Mode
+     * 1 - Accelerometer Only
+     * 2 - Magnetometer Only
+     * 3 - Gyro Only
+     * 4 - Accelerometer and Magnetometer
+     * 5 - Accelerometer and Gyro
+     * 6 - Magnetometer and Gyro
+     * 7 - Accelerometer, Magnetometer, and Gyro (non-fusion)
+     * 8 - IMU (fusion)
+     * 9 - Compass (fusion)
+     * 10 - M4G (fusion)
+     * 11 - NDOF FMC OFF
+     * 12 - NDOF
+     * @return operational mode
+     */
+    private byte operationalMode()
+    {
+        byte status;
+        int index;
+
+        index = I2cController.I2C_BUFFER_START_ADDRESS+REGISTER.OPR_MODE.bVal-REGISTER.CALIB_STAT.bVal;
+        this.readCacheLock.lock();
+        status = (byte)(this.readCache[index]);
+        this.readCacheLock.unlock();
+        return status;
+    }
+
+    /**
+     * Access function the current state of the BoschGyro Java Class
+     * @return imuState
+     */
     public States currentState() {
         return imuState;
     }
 
+    /**
+     * This routine should be called repeated in the init_loop function or you doing linear OpMode
+     * in a while loop with a call to wait one hardware cycle after every call to updateState
+     */
     public void updateState() {
         // Do operation based on the current state.
         switch (imuState) {
@@ -384,6 +655,10 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
                 resetVerify2();
                 break;
 
+            case IMU_WAIT_FOR_SELF_TEST:
+                waitForSelfTest();
+                break;
+
             case IMU_SET_POWER_MODE:
                 setPowerMode();
                 break;
@@ -396,36 +671,32 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
                 setUnits();
                 break;
 
-            case IMU_SET_CRYSTAL:
-                setCrystal();
+            case IMU_MODE_TRANSITION:
+                modeTransition();
                 break;
 
-            case IMU_RUN_SELF_TEST1:
-                runSelfTest1();
+            case IMU_MODE_VERIFY:
+                verifyImuMode();
                 break;
 
-            case IMU_RUN_SELF_TEST2:
-                runSelfTest2();
+            case IMU_MODE_VERIFY2:
+                verifyImuMode2();
                 break;
 
-            case IMU_RUN_SELF_TEST3:
-                runSelfTest3();
+            case IMU_VERIFY_CALIBRATION:
+                verifyCalibration();
                 break;
 
-            case IMU_RUN_SELF_TEST4:
-                runSelfTest4();
+            case IMU_READ_STATUS:
+                readStatus();
                 break;
 
-            case IMU_CALIBRATE_INIT:
-                calibrateInit();
+            case IMU_READ_STATUS2:
+                readStatus2();
                 break;
 
-            case IMU_CALIBRATE:
-                calibrate();
-                break;
-
-            case IMU_CALIBRATE_DONE:
-                calibrateDone();
+            case IMU_DELAY:
+                delay();
                 break;
 
             case IMU_RUNNING:
@@ -434,8 +705,14 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
 
     }
 
+    /**
+     * The very first state. Command the BNO to select regiser page one. This is the default
+     * register anyways but this just makes sure it was picked.
+     * After verification that the command was sent, verify that we are talking to a Bosch
+     * BNO055 by going to the IMU_CHECK_ID state.
+     */
     private void initialize() {
-        Log.i("FtcRobotController", "Resetting IMU to its power-on state......");
+        Log.i("Aluminati", "Resetting IMU to its power-on state......");
         //Set the register map PAGE_ID back to 0, to make the SYS_TRIGGER register visible
         this.outboundBytes[0] = 0x00;//Sets the PAGE_ID bit for page 0 (Table 4-2)
         if (i2cWriteImmediately(1, REGISTER.PAGE_ID)) {
@@ -444,75 +721,104 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
         }
     }
 
-    private void checkId() {
-        // Clear the data just to make sure it can be read
-        this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] = 0;
+    private void delay() {
+        if (runtime.time() > delayTime)
+        {
+            Log.i("Aluminati","Delay Time Expired: "+delayTime);
+            imuState = nextImuState;
+        }
+    }
 
-        Log.i("FtcRobotController", "Reading the CHIP ID");
-        localReady = false;
-        // Enable the read mode to read 1 byte
-        this.dim.enableI2cReadMode(this.port,
-                this.I2C_ADDRESS,
-                REGISTER.CHIP_ID.bVal,
-                1);
-        imu.setI2cPortActionFlag();//Set this flag to do the next read
-        imu.writeI2cCacheToController();
+    /**
+     * The second state for the BoschGyro class. This commands to do a read of the CHIP ID
+     * After completion of the command being executed, the state is transitioned to IMU_ID_VERIFY
+     */
+    private void checkId() {
+        Log.i("Aluminati", "Read the CHIP ID");
+        // Enable the read mode to read 4 bytes
+        i2cRead(REGISTER.CHIP_ID.bVal,
+                4); // Reading for to get All 4 Chip IDs.
         imuState = States.IMU_WAIT_FOR_COMPLETE;
         nextImuState = States.IMU_ID_VERIFY;
     }
 
+    /**
+     * This is the third state for the BoschGyro class. This looks at the read cache to see
+     * if the chip id is set. Note, this will stay in this state forever and never come out
+     * if the Chip is not found. This function needs to be updated to somehow give.
+     * The OpMode should constantly read the current state of the BoschGyro and display the state
+     * very telemetry to the Driver Station phone. If the state gets "stuck" then you know you
+     * probably have a hardware issue.
+     * After verifying the ID, the next step is to RESET the Bosch BNO055. Next state is IMU_RESET.
+     */
     private void verifyId() {
         this.readCacheLock.lock();
         if (this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] == bCHIP_ID_VALUE) {
-            Log.i("FtcRobotController", "Found the Bosch IMU!");
-            nextImuState = States.IMU_RESET;
-            setSensorMode(SENSOR_MODE.CONFIG);
+            Log.i("Aluminati","Bosch IMU ID Verified");
+            Log.i("Aluminati",hex(this.readCache));
+            imuState = States.IMU_RESET;
         } else {
             // I don't seem to get a busy signal. My expectation
             // that the read would set it to busy until the read
             // was complete.
-            Log.i("FtcRobotController", "Did Not Find the Bosch IMU");
-
+            Log.i("Aluminati", "Did Not Find the Bosch IMU");
         }
         this.readCacheLock.unlock();
     }
 
+    /**
+     * This is the fourth state for the BoschGyro class. This executes a RESET command to the
+     * Bosch BNO055, clears the interrupt flags, and sets the IMU clock to an external clock.
+     * We could also set the Self Test bit but this happens anyways during the power process.
+     * We know reset is done when the Chip ID can be successfully read
+     */
     private void reset() {
         //The "E" sets the RST_SYS and RST_INT bits, and sets the CLK_SEL bit,
         // to select the external IMU clock mounted on the Adafruit board (Table 4-2, and p.70). In
         // the lower 4 bits, a "1" sets the commanded Self Test bit, which causes self-test to run (p. 46)
+        // Not setting bit for Self Test since this happens during power on anyways.
+        // In order to do the Self Test, the chip must be in CONFIG mode
+        // CONFIG mode is the default mode after power or reset
 
         // While in the reset state the chip id (and other registers) reads as 0xFF.
-        this.outboundBytes[0] = (byte)0xE1;
-        Log.i("FtcRobotController", "Resetting the IMU, Run Self Tests");
+        this.outboundBytes[0] = (byte)0xE0;
+        Log.i("Aluminati", "Resetting the IMU");
         if (i2cWriteImmediately(1, REGISTER.SYS_TRIGGER)) {
-            imuState = States.IMU_WAIT_FOR_COMPLETE;
+            imuState = States.IMU_DELAY;
             nextImuState = States.IMU_RESET_VERIFY;
+            delayTime = 0.650;
+            runtime.reset();
         }
     }
 
+    /**
+     * This is the fifth state of the BoschGyro class. This will start the read command to
+     * read the CHIP ID. When the CHIP ID can be verified then the reset is complete.
+     */
     private void resetVerify() {
-        // Clear the data just to make sure it can be read
-        this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] = 0;
-
-        Log.i("FtcRobotController", "Reading the CHIP ID after Reset");
-        localReady = false;
-        // Enable the read mode to read 1 byte
-        this.dim.enableI2cReadMode(this.port,
-                this.I2C_ADDRESS,
-                REGISTER.CHIP_ID.bVal,
-                1);
-        imu.setI2cPortActionFlag();//Set this flag to do the next read
-        imu.writeI2cCacheToController();
+        Log.i("Aluminati", "Reading the CHIP ID after Reset");
+        // Enable the read mode to read 4 bytes
+        i2cRead(REGISTER.CHIP_ID.bVal,
+                4);
         imuState = States.IMU_WAIT_FOR_COMPLETE;
         nextImuState = States.IMU_RESET_VERIFY2;
     }
 
+    /**
+     * This is the sixth state of the BoschGyro class. This check the read cache to see if the
+     * the CHIP ID is correct. The next state is to verify that the self test has been completed.
+     * Unfortunately both cannot be read at the same time because there are more than 26 registers
+     * between the ID and the status registers. So it is a two step process.
+     * Like before, it will state in this state forever until the Bosch ID is found. It does
+     * not time out.
+     */
     private void resetVerify2() {
         this.readCacheLock.lock();
         if (this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] == bCHIP_ID_VALUE) {
-            Log.i("FtcRobotController", "Found the Bosch IMU after Reset!");
-            imuState = States.IMU_SET_POWER_MODE;
+            Log.i("Aluminati", "Found the Bosch IMU after Reset!");
+            imuState = States.IMU_READ_STATUS;
+            nextImuState = States.IMU_WAIT_FOR_SELF_TEST;
+            Log.i("Aluminati",hex(this.readCache));
         } else {
             // I don't seem to get a busy signal. My expectation
             // that the read would set it to busy until the read
@@ -522,8 +828,24 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
         this.readCacheLock.unlock();
     }
 
+    /**
+     * State #7. Waits until the status of the self is complete. Once complete the power mode
+     * is set.
+     */
+    private void waitForSelfTest() {
+        if (sysTestStatus() == 0x0F)
+        {
+            Log.i("Aluminati","Self Test is complete");
+            Log.i("Aluminati",hex(this.readCache));
+            imuState = States.IMU_SET_POWER_MODE;
+        }
+    }
+
+    /**
+     * State #8. Write the normal power mode to BNO055. Then set the units.
+     */
     private void setPowerMode() {
-        Log.i("FtcRobotController", "Setting The Power Mode......");
+        Log.i("Aluminati", "Setting The Power Mode......");
         // Set the power mode
         //  0 is Normal
         //  1 is Low
@@ -535,8 +857,12 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
         }
     }
 
+    /**
+     * State #9. Set the Units then transition to the operational mode transition to
+     * IMU_MODE_TRANSITION
+     */
     private void setUnits() {
-        Log.i("FtcRobotController", "Setting The Units......");
+        Log.i("Aluminati", "Setting The Units......");
         this.outboundBytes[0] = (byte) ((pitchmode.bVal << 7) |       // pitch angle convention
                 (temperatureUnit.bVal << 4) | // temperature
                 (angleunit.bVal << 2) |       // euler angle units
@@ -544,167 +870,110 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
                 (accelunit.bVal));    // accelerometer units
         if (i2cWriteImmediately(1, REGISTER.UNIT_SEL)) {
             imuState = States.IMU_WAIT_FOR_COMPLETE;
-            nextImuState = States.IMU_RUN_SELF_TEST3;
+            nextImuState = States.IMU_MODE_TRANSITION;
         }
     }
 
-    private void setCrystal() {
-        Log.i("FtcRobotController", "Setting The Crystal......");
-        //Set the register map PAGE_ID back to 0
-        if (useExternalCrystal)
-        {
-            this.outboundBytes[0] = (byte)(0x80);
-        }
-        else
-        {
-            this.outboundBytes[0] = 0x00;
-        }
-        if (i2cWriteImmediately(1, REGISTER.SYS_TRIGGER)) {
+    /**
+     * State #10. Set the IMU mode and then read status. Transition to IMU_VERIFY_MODE
+     */
+    private void modeTransition() {
+        Log.i("Aluminati", "Setting IMU to normal IMU Operation Mode");
+        this.outboundBytes[0] = SENSOR_MODE.IMU.bVal;
+
+        if (i2cWriteImmediately(1, REGISTER.OPR_MODE)) {
             imuState = States.IMU_WAIT_FOR_COMPLETE;
-            nextImuState = States.IMU_RUN_SELF_TEST1;
+            nextImuState = States.IMU_MODE_VERIFY;
         }
     }
 
-    private void runSelfTest1() {
-        // Run a self test. This appears to be a necessary step in order for the
-        // sensor to be able to actually be used.
+    /**
+     * State #11. Check that operational mode is IMU
+     */
+    private void verifyImuMode() {
+        Log.i("Aluminati","Verifying that the mode was set");
+        imuState = States.IMU_READ_STATUS;
+        nextImuState = States.IMU_MODE_VERIFY2;
+    }
 
-        // Initially read the SYS_TRIGGER
-        // Clear the data just to make sure it can be read
-        this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] = 0;
+    /**
+     * State #11. Check that operational mode is IMU.
+     */
+    private void verifyImuMode2() {
+        if (operationalMode() == SENSOR_MODE.IMU.bVal)
+        {
+            Log.i("Aluminati","BOSCH BNO055 is in the IMU Mode");
+            imuState = States.IMU_VERIFY_CALIBRATION;
+        }
+    }
 
-        Log.i("FtcRobotController", "Reading the SYS_TRIGGER");
-        localReady = false;
-        // Enable the read mode to read 1 byte
-        this.dim.enableI2cReadMode(this.port,
-                this.I2C_ADDRESS,
-                REGISTER.SYS_TRIGGER.bVal,
-                1);
-        imu.setI2cPortActionFlag();//Set this flag to do the next read
-        imu.writeI2cCacheToController();
+    /**
+     * State #12. Check that the IMU Gyro is calibrated
+     */
+    private void verifyCalibration() {
+        if (gyroCalStatus() == 3)
+        {
+            Log.i("Aluminati","Gyro is Calibrated");
+            i2cRead(REGISTER.EULER_H_LSB.bVal,
+                    20);
+            initComplete = true;
+            imuState = States.IMU_RUNNING;
+        }
+    }
+
+    private void readStatus() {
+        Log.i("Aluminati", "Reading the Status");
+        // Enable the read mode to read 8 bytes
+        i2cRead(REGISTER.CALIB_STAT.bVal,
+                10);
         imuState = States.IMU_WAIT_FOR_COMPLETE;
-        nextImuState = States.IMU_RUN_SELF_TEST2;
+        nextImuStateStatus = nextImuState;
+        nextImuState = States.IMU_READ_STATUS2;
     }
 
-    private void runSelfTest2() {
-        this.readCacheLock.lock();
-        if (this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] == 0) {
-            Log.i("FtcRobotController", "Waiting to Read SYS_TRIGGER");
-        } else {
-            Log.i("FtcRobotController", "Read The SYS TRIGGER - Now write it back out");
-            //Set the register map PAGE_ID back to 0
-            this.outboundBytes[0] = (byte) (this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] | 0x01);
-            if (i2cWriteImmediately(1, REGISTER.PAGE_ID)) {
-                imuState = States.IMU_WAIT_FOR_COMPLETE;
-                nextImuState = States.IMU_RUN_SELF_TEST3;
-            }
+    private void readStatus2() {
+        if (dataRegister() == dataRegValue)
+        {
+            // Address 3C is reserved and is always FF
+            // Assume Status has been read when that byte is not zero
+            Log.i("Aluminati", "The Status Registers");
+            imuState = nextImuStateStatus;
+            Log.i("Aluminati", hex(this.readCache));
         }
-        this.readCacheLock.unlock();
-    }
-
-    private void runSelfTest3() {
-        // Initially read the Self Test Results
-        // Clear the data just to make sure it can be read
-        this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] = 0;
-
-        Log.i("FtcRobotController", "Reading the Self Test Results");
-        localReady = false;
-        // Enable the read mode to read 1 byte
-        this.dim.enableI2cReadMode(this.port,
-                this.I2C_ADDRESS,
-                REGISTER.SELFTEST_RESULT.bVal,
-                1);
-        imu.setI2cPortActionFlag();//Set this flag to do the next read
-        imu.writeI2cCacheToController();
-        imuState = States.IMU_WAIT_FOR_COMPLETE;
-        nextImuState = States.IMU_RUN_SELF_TEST4;
-    }
-
-    private void runSelfTest4() {
-        this.readCacheLock.lock();
-        if (this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] == 0) {
-            Log.i("FtcRobotController", "Waiting to Read Self Test Results");
-        } else {
-            Log.i("FtcRobotController", "Read The Self Test Results");
-            if ((this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] & 0x0F) == 0x0F) {
-                Log.i("FtcRobotController", "Self Test Passed - Enabling IMU Mode");
-                nextImuState = States.IMU_CALIBRATE_INIT;
-                setSensorMode(SENSOR_MODE.IMU);
-            }
-            else
-            {
-                Log.i("FtcRobotController","Self Test Failed");
-            }
-        }
-        this.readCacheLock.unlock();
-    }
-
-
-    private void calibrateInit() {
-        // Clear the data just to make sure data was read in
-        this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] = 0;
-
-        Log.i("FtcRobotController", "Reading the calibration status");
-        localReady = false;
-        // Enable the read mode to read 1 byte
-        this.dim.enableI2cReadMode(this.port,
-                this.I2C_ADDRESS,
-                REGISTER.CALIB_STAT.bVal,
-                1);
-        imu.setI2cPortActionFlag();//Set this flag to do the next read
-        imu.writeI2cCacheToController();
-        imuState = States.IMU_WAIT_FOR_COMPLETE;
-        nextImuState = States.IMU_CALIBRATE;
-    }
-
-    private void calibrate() {
-        this.readCacheLock.lock();
-        if (this.readCache[I2cController.I2C_BUFFER_START_ADDRESS] == 0) {
-            Log.i("FtcRobotController", "Waiting for calibration data");
-        } else {
-            Log.i("FtcRobotController", "Calibration Data:" + this.readCache[I2cController.I2C_BUFFER_START_ADDRESS]);
-            imuState = States.IMU_CALIBRATE_DONE;
-        }
-        this.readCacheLock.unlock();
-
-    }
-
-    private void calibrateDone() {
-        Log.i("FtcRobotController", "Calibration Done - Now Running ");
-        localReady = false;
-        this.dim.enableI2cReadMode(this.port,
-                this.I2C_ADDRESS,
-                REGISTER.EULER_H_LSB.bVal,
-                20);
-        imu.setI2cPortActionFlag();//Set this flag to do the next read
-        imu.writeI2cCacheToController();
-        initComplete = true;
-        imuState = States.IMU_RUNNING;
     }
 
     private void waitForComplete() {
-//        if (this.imu.isI2cPortReady()) {
         if (localReady == true) {
-            Log.i("FtcRobotController", "IMU Port is Ready");
             imuState = nextImuState;
         } else {
-            Log.i("FtcRobotController", "IMU Port is Not Ready");
+            Log.i("Aluminati", "IMU Port is Not Ready");
         }
     }
 
-    private void setSensorMode(SENSOR_MODE mode)
+    private void i2cRead(int register,int byteCount)
     {
-        sensorMode = mode;
-        this.outboundBytes[0] = (byte) (mode.bVal & 0x0F);
-
-        Log.i("FtcRobotController", "Setting the Operational Mode to" + mode);
-        i2cWriteImmediately(1, REGISTER.OPR_MODE);
-        imuState = States.IMU_WAIT_FOR_COMPLETE;
+        // Clear the data just to make sure something was written
+        // Of course it is hard to tell if 0 was written. So if
+        // 0 is an expected answer then a delay or something probably
+        // needed since there is no way to tell when the device actually
+        // wrote data into the cache.
+        int index;
+        for (index =0; index < byteCount; index++) {
+            this.readCache[I2cController.I2C_BUFFER_START_ADDRESS + index] = 0;
+        }
+        localReady = false;
+        imu.enableI2cReadMode(this.I2C_ADDRESS,
+                register,
+                byteCount);
+        imu.setI2cPortActionFlag();//Set this flag to do the next read
+        imu.writeI2cCacheToController();
     }
 
     private boolean i2cWriteImmediately(int byteCount, REGISTER registerAddress){
         long rightNow = System.nanoTime(), startTime = System.nanoTime();
         int index;
+
+        Log.i("Aluminati","Write Immediately:"+byteCount+"  "+registerAddress.bVal);
 
         localReady = false;
         try {
@@ -714,7 +983,7 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
                 //nanoseconds pass with the port "stuck busy" (a VERY bad thing)
             }
         } catch (InterruptedException e) {
-            Log.i("FtcRobotController", "Unexpected interrupt while \"sleeping\" in i2cWriteImmediately.");
+            Log.i("Aluminati", "Unexpected interrupt while \"sleeping\" in i2cWriteImmediately.");
             return false;
 
         }
@@ -725,22 +994,28 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
                 this.writeCache[I2cController.I2C_BUFFER_START_ADDRESS + index] = this.outboundBytes[index];
                 //Both the read and write caches start with 5 bytes of prefix data.
             }
+            Log.i("Aluminati","Writing Data");
+            Log.i("Aluminati",hex(this.writeCache));
         } finally {
             this.writeCacheLock.unlock();
         }
         //The device interface object must do this, because the i2c device object CAN'T do it, in the
         //8 August 2015 beta release of the FTC SDK
-        this.dim.enableI2cWriteMode(this.port, this.I2C_ADDRESS, registerAddress.bVal, byteCount);
+        imu.enableI2cWriteMode(this.I2C_ADDRESS, registerAddress.bVal, byteCount);
         imu.setI2cPortActionFlag();  //Set the "go do it" flag
-        imu.writeI2cPortFlagOnlyToController();
+        imu.writeI2cCacheToController();
 
         return true;
     }
 
     public void portIsReady(int port) {
-        this.dim.setI2cPortActionFlag(port);
-        this.dim.readI2cCacheFromController(port);
-        this.dim.writeI2cPortFlagOnlyToController(port);
+        this.imu.setI2cPortActionFlag();
+        this.imu.readI2cCacheFromController();
+        this.imu.writeI2cPortFlagOnlyToController();
+        if (localReady == false)
+        {
+            Log.i("Aluminati","Port is Ready being set to TRUE");
+        }
         localReady = true;
     }
 
@@ -785,7 +1060,7 @@ public class BoschGyro implements I2cController.I2cPortReadyCallback {
      * @return
      */
     public String getConnectionInfo() {
-        return this.dim.getConnectionInfo() + "; I2C port " + this.port;
+        return this.imu.getConnectionInfo() + "; I2C port ?";
     }
 
     public void setI2cAddress(int newAddress) {
